@@ -179,11 +179,23 @@ const Header = () => (
 );
 
 const getExpectedCycleDay = (dateStr, entries, menstruating) => {
-    if (menstruating) return 1;
-    if (entries.length === 0) return '';
-    const sorted = [...entries].sort((a,b) => parseLocalDate(a.date) - parseLocalDate(b.date));
-    const cycles = computeCycles(sorted);
     const targetDate = parseLocalDate(dateStr);
+    const sorted = [...entries].sort((a,b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+    
+    if (menstruating) {
+        const prev = [...sorted].reverse().find(e => parseLocalDate(e.date) < targetDate);
+        if (prev) {
+            const gap = Math.round((targetDate - parseLocalDate(prev.date)) / 86400000);
+            if (!prev.menstruating || gap > 5) {
+                return 1;
+            }
+        } else {
+            return 1;
+        }
+    }
+
+    if (sorted.length === 0) return '';
+    const cycles = computeCycles(sorted);
     
     let bestBaseDate = null;
     for (const cycle of cycles) {
@@ -354,7 +366,7 @@ const HistoryList = ({ entries, onDelete, onEdit, cycleIndex, totalCycles, onPre
                             const shortDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
                             return (
-                                <div key={e.id} className="snap-start flex-shrink-0 w-48 flex flex-col bg-appleGray2 p-4 rounded-xl border border-appleGray3 relative hover:border-appleGray1 transition-colors duration-200">
+                                <div key={e.id} id={`history-card-${e.id}`} className="snap-start flex-shrink-0 w-48 flex flex-col bg-appleGray2 p-4 rounded-xl border border-appleGray3 relative hover:border-appleGray1 transition-colors duration-200">
                                     {editingId === e.id ? (
                                         <div className="flex flex-col gap-3 h-full justify-between">
                                             <input type="date" className="input-field py-1 px-2 text-sm" value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} />
@@ -390,7 +402,7 @@ const HistoryList = ({ entries, onDelete, onEdit, cycleIndex, totalCycles, onPre
                                                 {e.menstruating && <div className="ml-1"><DropIcon /></div>}
                                             </div>
                                             {e.notes && (
-                                                <div className="text-gray-400 text-xs italic mt-1 line-clamp-2 w-full px-2 flex-grow" title={e.notes}>
+                                                <div className="text-gray-400 text-xs italic mt-1 mb-5 line-clamp-2 w-full px-2 flex-grow" title={e.notes}>
                                                     "{e.notes}"
                                                 </div>
                                             )}
@@ -431,6 +443,9 @@ const CycleChart = ({ cycle, cycleIndex, totalCycles, onPrev, onNext }) => {
         const pointBackgroundColors = [];
         const pointRadii = [];
         const tooltipData = [];
+        const pointStyles = [];
+        const pointBorderColors = [];
+        const pointBorderWidths = [];
 
         for (let day = 1; day <= maxDay; day++) {
             labels.push(`Day ${day}`);
@@ -438,13 +453,20 @@ const CycleChart = ({ cycle, cycleIndex, totalCycles, onPrev, onNext }) => {
             if (entryForDay) {
                 data.push(entryForDay.temp);
                 pointBackgroundColors.push(entryForDay.menstruating ? '#ff3b30' : '#ffffff');
-                pointRadii.push(entryForDay.menstruating ? 6 : 4);
+                const baseRadius = entryForDay.menstruating ? 6 : 4;
+                pointRadii.push(entryForDay.notes ? baseRadius + 2 : baseRadius);
                 tooltipData.push(entryForDay);
+                pointStyles.push(entryForDay.notes ? 'rectRot' : 'circle');
+                pointBorderColors.push(entryForDay.notes ? '#0a84ff' : '#ffffff');
+                pointBorderWidths.push(entryForDay.notes ? 3 : 2);
             } else {
                 data.push(null);
                 pointBackgroundColors.push('#ffffff');
                 pointRadii.push(0);
                 tooltipData.push(null);
+                pointStyles.push('circle');
+                pointBorderColors.push('#ffffff');
+                pointBorderWidths.push(0);
             }
         }
         
@@ -519,13 +541,35 @@ const CycleChart = ({ cycle, cycleIndex, totalCycles, onPrev, onNext }) => {
                     borderColor: '#ffffff',
                     backgroundColor: '#ffffff',
                     pointBackgroundColor: pointBackgroundColors,
+                    pointStyle: pointStyles,
+                    pointBorderColor: pointBorderColors,
+                    pointBorderWidth: pointBorderWidths,
                     pointRadius: pointRadii,
-                    pointHoverRadius: 8,
+                    pointHoverRadius: 10,
                     borderWidth: 2,
                     tension: 0.3
                 }]
             },
             options: {
+                onClick: (e, elements) => {
+                    if (elements && elements.length > 0) {
+                        const dataIndex = elements[0].index;
+                        const entry = tooltipData[dataIndex];
+                        if (entry) {
+                            const el = document.getElementById(`history-card-${entry.id}`);
+                            if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                                el.style.transition = 'all 0.3s ease';
+                                el.style.boxShadow = '0 0 15px rgba(10, 132, 255, 0.4)';
+                                el.style.borderColor = '#0a84ff';
+                                setTimeout(() => {
+                                    el.style.boxShadow = 'none';
+                                    el.style.borderColor = 'rgba(58, 58, 60, 1)';
+                                }, 1500);
+                            }
+                        }
+                    }
+                },
                 responsive: true,
                 maintainAspectRatio: false,
                 color: '#fff',
